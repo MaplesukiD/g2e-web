@@ -4,28 +4,55 @@ import (
 	"net/http"
 )
 
-type HandlerFunc func(c *Context)
+type RouterGroup struct {
+	//路由组前缀
+	prefix string
+	//中间件
+	middlewares []HandlerFunc
+	//父亲路由组
+	parent *RouterGroup
+	//所有路由组共享的引擎
+	engine *Engine
+}
 
 type Engine struct {
-	//key: 请求方法-路由地址
-	//value: Handler处理方法
+	*RouterGroup
+	groups []*RouterGroup
+	//key: 请求方法-路由地址 value: Handler处理方法
 	router *router
 }
 
+func (group *RouterGroup) Group(prefix string) *RouterGroup {
+	engine := group.engine
+	newGroup := &RouterGroup{
+		prefix: group.prefix + prefix,
+		parent: group,
+		engine: engine,
+	}
+	engine.groups = append(engine.groups, newGroup)
+	return newGroup
+}
+
+type HandlerFunc func(c *Context)
+
 func New() *Engine {
-	return &Engine{router: newRouter()}
+	engine := &Engine{router: newRouter()}
+	engine.RouterGroup = &RouterGroup{engine: engine}
+	engine.groups = []*RouterGroup{engine.RouterGroup}
+	return engine
 }
 
-func (engine *Engine) addRoute(method string, pattern string, handler HandlerFunc) {
-	engine.router.addRoute(method, pattern, handler)
+func (group *RouterGroup) addRoute(method string, comp string, handler HandlerFunc) {
+	pattern := group.prefix + comp
+	group.engine.router.addRoute(method, pattern, handler)
 }
 
-func (engine *Engine) GET(pattern string, handler HandlerFunc) {
-	engine.addRoute("GET", pattern, handler)
+func (group *RouterGroup) GET(pattern string, handler HandlerFunc) {
+	group.addRoute("GET", pattern, handler)
 }
 
-func (engine *Engine) POST(pattern string, handler HandlerFunc) {
-	engine.addRoute("POST", pattern, handler)
+func (group *RouterGroup) POST(pattern string, handler HandlerFunc) {
+	group.addRoute("POST", pattern, handler)
 }
 
 func (engine *Engine) Run(addr string) (err error) {
